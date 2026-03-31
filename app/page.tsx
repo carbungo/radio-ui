@@ -171,20 +171,25 @@ function Equalizer({ color, analyserRef }: { color: string; analyserRef: React.R
         const data = new Uint8Array(bufLen);
         analyser.getByteFrequencyData(data);
 
-        // Log-scale mapping: more bars for low freqs where the ear is sensitive
+        // Log-scale mapping: skip bin 0 (DC offset) and apply noise floor
+        const SKIP_BINS = 2; // skip DC + sub-bass rumble
+        const NOISE_FLOOR = 12; // ignore values below this (stream noise)
+        const usableBins = bufLen - SKIP_BINS;
+
         for (let i = 0; i < EQ_BARS; i++) {
           const lowFrac = i / EQ_BARS;
           const highFrac = (i + 1) / EQ_BARS;
-          const lowIdx = Math.floor(Math.pow(lowFrac, 1.8) * bufLen);
-          const highIdx = Math.max(lowIdx + 1, Math.floor(Math.pow(highFrac, 1.8) * bufLen));
+          const lowIdx = SKIP_BINS + Math.floor(Math.pow(lowFrac, 1.8) * usableBins);
+          const highIdx = Math.max(lowIdx + 1, SKIP_BINS + Math.floor(Math.pow(highFrac, 1.8) * usableBins));
 
           let sum = 0;
           let count = 0;
           for (let j = lowIdx; j < highIdx && j < bufLen; j++) {
-            sum += data[j];
+            const val = data[j] > NOISE_FLOOR ? data[j] - NOISE_FLOOR : 0;
+            sum += val;
             count++;
           }
-          const raw = count > 0 ? sum / count / 255 : 0;
+          const raw = count > 0 ? sum / count / (255 - NOISE_FLOOR) : 0;
 
           // Fast attack, slow decay for satisfying visual
           if (raw > smoothed[i]) {
