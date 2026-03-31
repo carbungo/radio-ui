@@ -171,16 +171,17 @@ function Equalizer({ color, analyserRef }: { color: string; analyserRef: React.R
         const data = new Uint8Array(bufLen);
         analyser.getByteFrequencyData(data);
 
-        // Log-scale mapping: skip bin 0 (DC offset) and apply noise floor
-        const SKIP_BINS = 2; // skip DC + sub-bass rumble
-        const NOISE_FLOOR = 12; // ignore values below this (stream noise)
+        // Mild log mapping + per-band gain to spread energy across all bars
+        const SKIP_BINS = 2;
+        const NOISE_FLOOR = 10;
         const usableBins = bufLen - SKIP_BINS;
 
         for (let i = 0; i < EQ_BARS; i++) {
           const lowFrac = i / EQ_BARS;
           const highFrac = (i + 1) / EQ_BARS;
-          const lowIdx = SKIP_BINS + Math.floor(Math.pow(lowFrac, 1.8) * usableBins);
-          const highIdx = Math.max(lowIdx + 1, SKIP_BINS + Math.floor(Math.pow(highFrac, 1.8) * usableBins));
+          // Gentler curve (1.3) so high-freq bars get enough bins
+          const lowIdx = SKIP_BINS + Math.floor(Math.pow(lowFrac, 1.3) * usableBins);
+          const highIdx = Math.max(lowIdx + 1, SKIP_BINS + Math.floor(Math.pow(highFrac, 1.3) * usableBins));
 
           let sum = 0;
           let count = 0;
@@ -189,7 +190,12 @@ function Equalizer({ color, analyserRef }: { color: string; analyserRef: React.R
             sum += val;
             count++;
           }
-          const raw = count > 0 ? sum / count / (255 - NOISE_FLOOR) : 0;
+          let raw = count > 0 ? sum / count / (255 - NOISE_FLOOR) : 0;
+
+          // Per-band gain: tame bass, boost highs (music has way more low-freq energy)
+          const bandPos = i / (EQ_BARS - 1); // 0=bass, 1=treble
+          const gain = 0.55 + bandPos * 0.8; // bass ~0.55x, treble ~1.35x
+          raw = Math.min(1, raw * gain);
 
           // Fast attack, slow decay for satisfying visual
           if (raw > smoothed[i]) {
