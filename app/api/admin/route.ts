@@ -47,6 +47,7 @@ const STATIONS = [
   { id: "neon", name: "Neon Drift FM", mount: "/neon-drift", playlist: "neon-drift_m3u", color: "#06b6d4" },
   { id: "portal", name: "Portal Static", mount: "/portal-static", playlist: "portal-static_m3u", color: "#22c55e" },
   { id: "council", name: "Council Radio Σ-12", mount: "/council-radio", playlist: "council-radio_m3u", color: "#eab308" },
+  { id: "mall", name: "MALL∞ FM", mount: "/mall-fm", playlist: "vaporwave_m3u", color: "#e0aaff" },
   { id: "stream", name: "Channel Surfing", mount: "/stream", playlist: null, color: "#ef4444" },
 ];
 

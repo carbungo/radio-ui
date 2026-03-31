@@ -72,6 +72,17 @@ const STATIONS: Station[] = [
     tagline: "Mandatory listening by decree",
     mount: "/council-radio",
   },
+  {
+    id: "mall-fm",
+    name: "MALL∞ FM",
+    shortName: "MALL∞",
+    freq: "δ-98 kHz",
+    dimension: "δ-98",
+    genre: "Vaporwave / Future Funk",
+    color: "#e0aaff",
+    tagline: "Echoes from the eternal mall",
+    mount: "/mall-fm",
+  },
 ];
 
 const STREAM_BASE = "https://radio.carbun.xyz";
