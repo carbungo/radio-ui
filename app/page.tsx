@@ -12,6 +12,7 @@ interface Station {
   genre: string;
   color: string;
   tagline: string;
+  mount: string;
 }
 
 const STATIONS: Station[] = [
@@ -23,6 +24,7 @@ const STATIONS: Station[] = [
     genre: "SPACE FUNK",
     color: "#ff6b35",
     tagline: "Hauling grooves across the void",
+    mount: "/gormax-fm",
   },
   {
     id: "void-lounge",
@@ -32,6 +34,7 @@ const STATIONS: Station[] = [
     genre: "LOFI / AMBIENT",
     color: "#7b68ee",
     tagline: "Reality is negotiable here",
+    mount: "/void-lounge",
   },
   {
     id: "neon-drift",
@@ -41,6 +44,7 @@ const STATIONS: Station[] = [
     genre: "NCS / ELECTRONIC",
     color: "#00ffcc",
     tagline: "Neon-soaked beats from the grid",
+    mount: "/neon-drift",
   },
   {
     id: "portal-static",
@@ -50,6 +54,7 @@ const STATIONS: Station[] = [
     genre: "LOFI JAZZ",
     color: "#ff71ce",
     tagline: "Frequencies between frequencies",
+    mount: "/portal-static",
   },
   {
     id: "council-radio",
@@ -59,10 +64,11 @@ const STATIONS: Station[] = [
     genre: "SYNTHWAVE",
     color: "#ffd700",
     tagline: "Mandatory listening by decree",
+    mount: "/council-radio",
   },
 ];
 
-const STREAM_URL = "https://radio.carbun.xyz/stream";
+const STREAM_BASE = "https://radio.carbun.xyz";
 const STATUS_URL = "https://radio.carbun.xyz/status-json.xsl";
 
 /* ─── Equalizer Component ───────────────────────────────── */
@@ -157,6 +163,19 @@ export default function RadioPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const station = STATIONS[stationIdx];
 
+  // Helper: start playing a specific station's stream
+  const startStream = useCallback((st: Station) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    const audio = new Audio(`${STREAM_BASE}${st.mount}`);
+    audio.crossOrigin = "anonymous";
+    audio.play().catch(console.error);
+    audioRef.current = audio;
+  }, []);
+
   // Power on with warm-up effect
   const togglePower = useCallback(() => {
     if (!poweredOn) {
@@ -185,23 +204,24 @@ export default function RadioPage() {
       }
       setPlaying(false);
     } else {
-      const audio = new Audio(STREAM_URL);
-      audio.crossOrigin = "anonymous";
-      audio.play().catch(console.error);
-      audioRef.current = audio;
+      startStream(station);
       setPlaying(true);
     }
-  }, [poweredOn, playing]);
+  }, [poweredOn, playing, station, startStream]);
 
-  // Channel change
+  // Channel change — swap stream if currently playing
   const changeChannel = useCallback(
     (dir: number) => {
       if (!poweredOn) return;
       setChannelChanging(true);
       setTimeout(() => setChannelChanging(false), 600);
-      setStationIdx((prev) => (prev + dir + STATIONS.length) % STATIONS.length);
+      const newIdx = (stationIdx + dir + STATIONS.length) % STATIONS.length;
+      setStationIdx(newIdx);
+      if (playing) {
+        startStream(STATIONS[newIdx]);
+      }
     },
-    [poweredOn]
+    [poweredOn, stationIdx, playing, startStream]
   );
 
   // Keyboard controls
@@ -216,26 +236,44 @@ export default function RadioPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [changeChannel, togglePlay, togglePower]);
 
-  // Poll Icecast status
+  // Poll Icecast status for current station's mount
   useEffect(() => {
     if (!poweredOn) return;
     const poll = async () => {
       try {
         const res = await fetch(STATUS_URL, { cache: "no-store" });
         const data = await res.json();
-        const src = data?.icestats?.source;
+        const sources = data?.icestats?.source;
+        if (!sources) return;
+        // sources can be a single object or an array
+        const sourceList = Array.isArray(sources) ? sources : [sources];
+        // Find the source matching current station's mount
+        const currentMount = station.mount;
+        const src = sourceList.find(
+          (s: Record<string, unknown>) => (s.listenurl as string)?.endsWith(currentMount)
+        );
         if (src) {
-          setNowPlaying(src.title || src.server_name || "Unknown Signal");
-          setListeners(src.listeners || 0);
+          setNowPlaying(
+            (src.title as string) || (src.server_name as string) || "Unknown Signal"
+          );
+          setListeners((src.listeners as number) || 0);
+        } else {
+          setNowPlaying("Tuning...");
+          // Sum all listeners across stations
+          const total = sourceList.reduce(
+            (sum: number, s: Record<string, unknown>) => sum + ((s.listeners as number) || 0),
+            0
+          );
+          setListeners(total);
         }
       } catch {
-        // Icecast unreachable — that's fine
+        // Icecast unreachable
       }
     };
     poll();
     const interval = setInterval(poll, 10000);
     return () => clearInterval(interval);
-  }, [poweredOn]);
+  }, [poweredOn, station]);
 
   return (
     <div className="h-screen w-screen flex items-center justify-center p-4 md:p-8" style={{ background: "radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 70%)" }}>
