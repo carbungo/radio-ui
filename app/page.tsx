@@ -337,6 +337,60 @@ export default function RadioPage() {
     }
   }, [stationIdx, playing, startStream]);
 
+  // ─── Media Session API (notification drawer / lock screen) ───
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      if (!playing) {
+        startStream(station);
+        setPlaying(true);
+      }
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+      if (sourceNodeRef.current) {
+        try { sourceNodeRef.current.disconnect(); } catch { /* ok */ }
+        sourceNodeRef.current = null;
+      }
+      setPlaying(false);
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      selectStation((stationIdx - 1 + STATIONS.length) % STATIONS.length);
+    });
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      selectStation((stationIdx + 1) % STATIONS.length);
+    });
+  }, [playing, station, stationIdx, startStream, selectStation]);
+
+  // Update media session metadata when track or station changes
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+
+    // Parse "Artist — Title" or just "Title"
+    let title = nowPlaying || station.name;
+    let artist = station.name;
+    if (nowPlaying.includes(" — ")) {
+      const parts = nowPlaying.split(" — ");
+      artist = parts[0];
+      title = parts.slice(1).join(" — ");
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album: `ICR · ${station.genre} · ${station.dimension}`,
+      artwork: [
+        { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+        { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      ],
+    });
+  }, [nowPlaying, station]);
+
   // Keyboard controls
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
