@@ -45,17 +45,6 @@ html, body {
   animation-play-state: paused;
 }
 
-/* ─── EQ Bars ───────────────────────────── */
-@keyframes eq {
-  0%, 100% { height: var(--eq-min, 3px); }
-  50% { height: var(--eq-max, 100%); }
-}
-
-.eq-bar {
-  border-radius: 2px;
-  animation: eq var(--eq-speed, 0.6s) ease-in-out infinite;
-}
-
 /* ─── Pulse ─────────────────────────────── */
 @keyframes pulse-ring {
   0% { transform: scale(1); opacity: 0.6; }
@@ -94,11 +83,6 @@ html, body {
 }
 
 /* ─── Play button ───────────────────────── */
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 .play-ring {
   transition: all 0.3s;
 }
@@ -116,6 +100,10 @@ html, body {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── No scrollbar utility ──────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* ─── Mobile safe areas ─────────────────── */
 @supports (padding-top: env(safe-area-inset-top)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 /* ─── Station Data ──────────────────────────────────────── */
 
@@ -76,6 +76,7 @@ const STATIONS: Station[] = [
 
 const STREAM_BASE = "https://radio.carbun.xyz";
 const STATUS_URL = "https://radio.carbun.xyz/status-json.xsl";
+const EQ_BARS = 32;
 
 /* ─── Marquee (auto-scroll long titles) ─────────────────── */
 
@@ -116,37 +117,116 @@ function Marquee({ text, className }: { text: string; className?: string }) {
   );
 }
 
-/* ─── Equalizer ─────────────────────────────────────────── */
+/* ─── Real Audio Equalizer (Web Audio API) ──────────────── */
 
-function Equalizer({ playing, color }: { playing: boolean; color: string }) {
-  const bars = useMemo(() =>
-    Array.from({ length: 32 }, (_, i) => ({
-      min: 2 + Math.random() * 2,
-      max: 8 + Math.random() * 24,
-      speed: 0.3 + Math.random() * 0.5,
-      delay: i * 0.03,
-    })), []
-  );
+function Equalizer({ color, analyserRef }: { color: string; analyserRef: React.RefObject<AnalyserNode | null> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const smoothedRef = useRef<Float32Array>(new Float32Array(EQ_BARS).fill(0));
+  const dimsRef = useRef({ w: 0, h: 0 });
+
+  // Handle canvas resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      dimsRef.current = { w: rect.width, h: rect.height };
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.scale(dpr, dpr);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const draw = () => {
+      animRef.current = requestAnimationFrame(draw);
+
+      const { w, h } = dimsRef.current;
+      if (!w || !h) return;
+
+      // Clear with the DPR-scaled context
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      const analyser = analyserRef.current;
+      const smoothed = smoothedRef.current;
+
+      if (analyser) {
+        const bufLen = analyser.frequencyBinCount;
+        const data = new Uint8Array(bufLen);
+        analyser.getByteFrequencyData(data);
+
+        // Log-scale mapping: more bars for low freqs where the ear is sensitive
+        for (let i = 0; i < EQ_BARS; i++) {
+          const lowFrac = i / EQ_BARS;
+          const highFrac = (i + 1) / EQ_BARS;
+          const lowIdx = Math.floor(Math.pow(lowFrac, 1.8) * bufLen);
+          const highIdx = Math.max(lowIdx + 1, Math.floor(Math.pow(highFrac, 1.8) * bufLen));
+
+          let sum = 0;
+          let count = 0;
+          for (let j = lowIdx; j < highIdx && j < bufLen; j++) {
+            sum += data[j];
+            count++;
+          }
+          const raw = count > 0 ? sum / count / 255 : 0;
+
+          // Fast attack, slow decay for satisfying visual
+          if (raw > smoothed[i]) {
+            smoothed[i] += (raw - smoothed[i]) * 0.6;
+          } else {
+            smoothed[i] += (raw - smoothed[i]) * 0.12;
+          }
+        }
+      } else {
+        // No analyser — decay to zero
+        for (let i = 0; i < EQ_BARS; i++) {
+          smoothed[i] *= 0.92;
+        }
+      }
+
+      const gap = 1.5;
+      const barW = (w - gap * (EQ_BARS - 1)) / EQ_BARS;
+
+      for (let i = 0; i < EQ_BARS; i++) {
+        const val = smoothed[i];
+        const barH = Math.max(2, val * h);
+        const x = i * (barW + gap);
+        const y = h - barH;
+
+        const grad = ctx.createLinearGradient(x, h, x, y);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, color + "88");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, barW, barH);
+      }
+    };
+
+    draw();
+    return () => cancelAnimationFrame(animRef.current);
+  }, [color, analyserRef]);
 
   return (
-    <div className="flex items-end justify-center gap-[1.5px] h-8 w-full">
-      {bars.map((bar, i) => (
-        <div
-          key={i}
-          className="eq-bar flex-1"
-          style={{
-            ["--eq-min" as string]: `${bar.min}px`,
-            ["--eq-max" as string]: `${bar.max}px`,
-            ["--eq-speed" as string]: `${bar.speed}s`,
-            animationDelay: `${bar.delay}s`,
-            animationPlayState: playing ? "running" : "paused",
-            background: `linear-gradient(to top, ${color}, ${color}88)`,
-            height: playing ? undefined : `${bar.min}px`,
-            transition: "height 0.3s",
-          } as React.CSSProperties}
-        />
-      ))}
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="w-full h-8"
+      style={{ display: "block" }}
+    />
   );
 }
 
@@ -158,8 +238,47 @@ export default function RadioPage() {
   const [nowPlaying, setNowPlaying] = useState("");
   const [listeners, setListeners] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   const station = STATIONS[stationIdx];
+
+  const connectAnalyser = useCallback((audio: HTMLAudioElement) => {
+    // Reuse or create AudioContext
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    }
+    const ctx = audioCtxRef.current;
+
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+
+    // Create analyser once
+    if (!analyserRef.current) {
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.7;
+      analyser.connect(ctx.destination);
+      analyserRef.current = analyser;
+    }
+
+    // Disconnect previous source
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.disconnect(); } catch { /* ok */ }
+      sourceNodeRef.current = null;
+    }
+
+    // Connect new audio element → analyser → destination
+    try {
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(analyserRef.current);
+      sourceNodeRef.current = source;
+    } catch (e) {
+      console.warn("Could not create media source:", e);
+    }
+  }, []);
 
   const startStream = useCallback((st: Station) => {
     if (audioRef.current) {
@@ -167,11 +286,18 @@ export default function RadioPage() {
       audioRef.current.src = "";
       audioRef.current = null;
     }
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.disconnect(); } catch { /* ok */ }
+      sourceNodeRef.current = null;
+    }
+
     const audio = new Audio(`${STREAM_BASE}${st.mount}`);
     audio.crossOrigin = "anonymous";
-    audio.play().catch(console.error);
     audioRef.current = audio;
-  }, []);
+
+    connectAnalyser(audio);
+    audio.play().catch(console.error);
+  }, [connectAnalyser]);
 
   const togglePlay = useCallback(() => {
     if (playing) {
@@ -179,6 +305,10 @@ export default function RadioPage() {
         audioRef.current.pause();
         audioRef.current.src = "";
         audioRef.current = null;
+      }
+      if (sourceNodeRef.current) {
+        try { sourceNodeRef.current.disconnect(); } catch { /* ok */ }
+        sourceNodeRef.current = null;
       }
       setPlaying(false);
     } else {
@@ -288,7 +418,6 @@ export default function RadioPage() {
 
         {/* Station info */}
         <div className="text-center max-w-lg w-full fade-enter" key={station.id}>
-          {/* Genre pill */}
           <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 rounded-full"
             style={{ background: `${station.color}15`, border: `1px solid ${station.color}30` }}>
             <span className="text-[11px] font-medium tracking-wider uppercase"
@@ -297,7 +426,6 @@ export default function RadioPage() {
             </span>
           </div>
 
-          {/* Station name */}
           <h1
             className="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-2"
             style={{ color: "#fff" }}
@@ -305,12 +433,10 @@ export default function RadioPage() {
             {station.name}
           </h1>
 
-          {/* Tagline */}
           <p className="text-sm md:text-base" style={{ color: "#666" }}>
             {station.tagline}
           </p>
 
-          {/* Dimension + Freq */}
           <div className="mt-3 flex items-center justify-center gap-4 text-xs"
             style={{ color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>
             <span>DIM {station.dimension}</span>
@@ -333,11 +459,9 @@ export default function RadioPage() {
           aria-label={playing ? "Stop" : "Play"}
         >
           {playing ? (
-            /* Stop icon */
             <div className="w-6 h-6 md:w-7 md:h-7 rounded-sm"
               style={{ background: station.color }} />
           ) : (
-            /* Play icon */
             <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" className="ml-1">
               <path d="M8 5v14l11-7z" />
             </svg>
@@ -362,9 +486,9 @@ export default function RadioPage() {
           ) : null}
         </div>
 
-        {/* Equalizer */}
+        {/* Equalizer — real audio data via Web Audio API */}
         <div className="w-full max-w-sm px-4">
-          <Equalizer playing={playing} color={station.color} />
+          <Equalizer color={station.color} analyserRef={analyserRef} />
         </div>
       </main>
 
