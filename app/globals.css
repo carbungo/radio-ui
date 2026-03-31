@@ -1,287 +1,124 @@
 @import "tailwindcss";
 
 :root {
-  --crt-green: #39ff14;
-  --crt-amber: #ffbf00;
-  --crt-red: #ff3131;
-  --crt-blue: #00d4ff;
-  --crt-dim: #1a3a1a;
-  --crt-bg: #0a0a0a;
-  --crt-bezel: #2a2218;
-  --crt-bezel-light: #3d3226;
-  --static-opacity: 0.03;
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-2: #1e1e1e;
+  --border: #2a2a2a;
+  --text: #e5e5e5;
+  --text-dim: #737373;
+  --accent: #ff6b35;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
-  background: #111;
-  color: var(--crt-green);
-  font-family: 'VT323', 'Courier New', monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow: hidden;
-  height: 100vh;
-  width: 100vw;
-}
-
-/* CRT screen curvature effect */
-.crt-screen {
-  position: relative;
-  background: var(--crt-bg);
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow:
-    inset 0 0 100px rgba(0, 0, 0, 0.7),
-    0 0 40px rgba(57, 255, 20, 0.1);
-}
-
-/* Scan lines overlay */
-.crt-screen::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 1px,
-    rgba(0, 0, 0, 0.3) 1px,
-    rgba(0, 0, 0, 0.3) 2px
-  );
-  pointer-events: none;
-  z-index: 10;
-}
-
-/* Screen flicker */
-.crt-screen::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(57, 255, 20, 0.02);
-  pointer-events: none;
-  z-index: 11;
-  animation: flicker 0.15s infinite;
-}
-
-@keyframes flicker {
-  0% { opacity: 0.97; }
-  5% { opacity: 0.95; }
-  10% { opacity: 0.98; }
-  20% { opacity: 0.96; }
-  50% { opacity: 0.99; }
-  80% { opacity: 0.97; }
-  100% { opacity: 0.98; }
-}
-
-/* Static noise */
-.static-overlay {
-  position: absolute;
-  inset: 0;
-  opacity: var(--static-opacity);
-  pointer-events: none;
-  z-index: 9;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
-  animation: static-shift 0.1s steps(5) infinite;
-}
-
-@keyframes static-shift {
-  0% { transform: translate(0, 0); }
-  25% { transform: translate(-2px, 1px); }
-  50% { transform: translate(1px, -1px); }
-  75% { transform: translate(-1px, 2px); }
-  100% { transform: translate(2px, 0); }
-}
-
-/* VHS tracking lines */
-.vhs-tracking {
-  position: absolute;
+  height: 100%;
   width: 100%;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  z-index: 8;
-  animation: tracking 8s linear infinite;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@keyframes tracking {
-  0% { top: -4px; }
-  100% { top: 100%; }
+/* ─── Scrollbar ─────────────────────────── */
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ─── Marquee for long now-playing ──────── */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
-/* Channel display text glow */
-.glow-green {
-  text-shadow:
-    0 0 7px var(--crt-green),
-    0 0 10px var(--crt-green),
-    0 0 21px var(--crt-green);
+.marquee-track {
+  display: inline-flex;
+  animation: marquee var(--marquee-duration, 12s) linear infinite;
+  will-change: transform;
 }
 
-.glow-amber {
-  color: var(--crt-amber);
-  text-shadow:
-    0 0 7px var(--crt-amber),
-    0 0 10px var(--crt-amber),
-    0 0 21px var(--crt-amber);
+.marquee-track:hover,
+.marquee-track.paused {
+  animation-play-state: paused;
 }
 
-.glow-blue {
-  color: var(--crt-blue);
-  text-shadow:
-    0 0 7px var(--crt-blue),
-    0 0 10px var(--crt-blue),
-    0 0 21px var(--crt-blue);
+/* ─── EQ Bars ───────────────────────────── */
+@keyframes eq {
+  0%, 100% { height: var(--eq-min, 3px); }
+  50% { height: var(--eq-max, 100%); }
 }
 
-.glow-red {
-  color: var(--crt-red);
-  text-shadow:
-    0 0 7px var(--crt-red),
-    0 0 10px var(--crt-red);
-}
-
-/* Bezel (TV housing) */
-.tv-bezel {
-  background: linear-gradient(145deg, var(--crt-bezel-light), var(--crt-bezel));
-  border-radius: 30px;
-  padding: 24px;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* Channel buttons (mobile-friendly) */
-.channel-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  background: linear-gradient(145deg, #444, #2a2a2a);
-  border: 1px solid #555;
-  color: #999;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-.channel-btn:hover {
-  background: linear-gradient(145deg, #555, #333);
-  color: #ccc;
-}
-
-.channel-btn:active {
-  transform: scale(0.9);
-  background: #222;
-}
-
-.channel-btn:disabled {
-  opacity: 0.2;
-  cursor: default;
-}
-
-/* Equalizer bars */
 .eq-bar {
-  display: inline-block;
-  width: 4px;
-  margin: 0 1px;
-  background: var(--crt-green);
-  border-radius: 1px 1px 0 0;
-  animation: eq-bounce 0.8s ease-in-out infinite alternate;
-  box-shadow: 0 0 4px var(--crt-green);
+  border-radius: 2px;
+  animation: eq var(--eq-speed, 0.6s) ease-in-out infinite;
 }
 
-@keyframes eq-bounce {
-  0% { height: 4px; }
-  100% { height: var(--eq-height, 20px); }
+/* ─── Pulse ─────────────────────────────── */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
 }
 
-/* Channel change static burst */
-@keyframes channel-change {
-  0% { opacity: 0; }
-  5% { opacity: 0.8; }
-  10% { opacity: 0.3; }
-  15% { opacity: 0.9; }
-  20% { opacity: 0.1; }
-  25% { opacity: 0; }
-  100% { opacity: 0; }
-}
-
-.channel-static {
-  animation: channel-change 0.6s ease-out;
-}
-
-/* Pulsing live indicator */
-@keyframes pulse-live {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.pulse-live {
-  animation: pulse-live 1.5s ease-in-out infinite;
-}
-
-/* Warm-up effect */
-@keyframes warm-up {
-  0% {
-    filter: brightness(0) saturate(0);
-    transform: scaleY(0.01);
-  }
-  30% {
-    filter: brightness(0.3) saturate(0.2);
-    transform: scaleY(0.01);
-  }
-  50% {
-    filter: brightness(0.5) saturate(0.5);
-    transform: scaleY(1);
-  }
-  70% {
-    filter: brightness(0.8) saturate(0.8);
-  }
-  100% {
-    filter: brightness(1) saturate(1);
-    transform: scaleY(1);
-  }
-}
-
-.warming-up {
-  animation: warm-up 2s ease-out forwards;
-}
-
-/* Power button */
-.power-btn {
-  width: 32px;
-  height: 32px;
+.pulse-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  border: 2px solid #555;
-  cursor: pointer;
-  transition: all 0.3s;
+  border: 2px solid currentColor;
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ─── Glow backdrop ─────────────────────── */
+@keyframes glow-shift {
+  0%, 100% { opacity: 0.4; filter: blur(80px); }
+  50% { opacity: 0.6; filter: blur(100px); }
+}
+
+.glow-backdrop {
+  animation: glow-shift 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ─── Station card ──────────────────────── */
+.station-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
-.power-btn.on {
-  background: var(--crt-green);
-  box-shadow: 0 0 8px var(--crt-green);
-  border-color: var(--crt-green);
+.station-card:active {
+  transform: scale(0.96);
 }
 
-.power-btn.off {
-  background: #333;
-  box-shadow: none;
+/* ─── Play button ───────────────────────── */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* Mobile adjustments */
-@media (max-width: 640px) {
-  .tv-bezel {
-    padding: 12px;
-    border-radius: 20px;
-  }
+.play-ring {
+  transition: all 0.3s;
+}
 
-  .crt-screen {
-    border-radius: 12px;
-  }
+.play-ring:active {
+  transform: scale(0.92);
+}
+
+/* ─── Fade transitions ──────────────────── */
+.fade-enter {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Mobile safe areas ─────────────────── */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }

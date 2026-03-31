@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 /* ─── Station Data ──────────────────────────────────────── */
 
 interface Station {
   id: string;
   name: string;
+  shortName: string;
   freq: string;
   dimension: string;
   genre: string;
@@ -19,9 +20,10 @@ const STATIONS: Station[] = [
   {
     id: "gormax-fm",
     name: "GORMAX FM",
+    shortName: "GORMAX",
     freq: "94.7 PHz",
     dimension: "Ω-70s",
-    genre: "SPACE FUNK",
+    genre: "Space Funk",
     color: "#ff6b35",
     tagline: "Hauling grooves across the void",
     mount: "/gormax-fm",
@@ -29,9 +31,10 @@ const STATIONS: Station[] = [
   {
     id: "void-lounge",
     name: "THE VOID LOUNGE",
+    shortName: "VOID",
     freq: "33.3 MHz",
     dimension: "C-137",
-    genre: "LOFI / AMBIENT",
+    genre: "Lofi / Ambient",
     color: "#7b68ee",
     tagline: "Reality is negotiable here",
     mount: "/void-lounge",
@@ -39,9 +42,10 @@ const STATIONS: Station[] = [
   {
     id: "neon-drift",
     name: "NEON DRIFT FM",
+    shortName: "NEON",
     freq: "88.8 GHz",
     dimension: "K-22β",
-    genre: "NCS / ELECTRONIC",
+    genre: "NCS / Electronic",
     color: "#00ffcc",
     tagline: "Neon-soaked beats from the grid",
     mount: "/neon-drift",
@@ -49,9 +53,10 @@ const STATIONS: Station[] = [
   {
     id: "portal-static",
     name: "PORTAL STATIC",
+    shortName: "PORTAL",
     freq: "∞ Hz",
     dimension: "NULL",
-    genre: "LOFI JAZZ",
+    genre: "Lofi Jazz",
     color: "#ff71ce",
     tagline: "Frequencies between frequencies",
     mount: "/portal-static",
@@ -59,9 +64,10 @@ const STATIONS: Station[] = [
   {
     id: "council-radio",
     name: "COUNCIL RADIO Σ-12",
+    shortName: "COUNCIL",
     freq: "0.001 Hz",
     dimension: "Σ-12",
-    genre: "SYNTHWAVE",
+    genre: "Synthwave",
     color: "#ffd700",
     tagline: "Mandatory listening by decree",
     mount: "/council-radio",
@@ -71,24 +77,72 @@ const STATIONS: Station[] = [
 const STREAM_BASE = "https://radio.carbun.xyz";
 const STATUS_URL = "https://radio.carbun.xyz/status-json.xsl";
 
-/* ─── Equalizer Component ───────────────────────────────── */
+/* ─── Marquee (auto-scroll long titles) ─────────────────── */
+
+function Marquee({ text, className }: { text: string; className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [needsScroll, setNeedsScroll] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      if (containerRef.current && textRef.current) {
+        setNeedsScroll(textRef.current.scrollWidth > containerRef.current.clientWidth);
+      }
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [text]);
+
+  if (!needsScroll) {
+    return (
+      <div ref={containerRef} className={`overflow-hidden ${className || ""}`}>
+        <span ref={textRef} className="whitespace-nowrap">{text}</span>
+      </div>
+    );
+  }
+
+  const duration = Math.max(8, text.length * 0.3);
+
+  return (
+    <div ref={containerRef} className={`overflow-hidden ${className || ""}`}>
+      <span ref={textRef} className="hidden">{text}</span>
+      <div className="marquee-track" style={{ ["--marquee-duration" as string]: `${duration}s` }}>
+        <span className="whitespace-nowrap pr-16">{text}</span>
+        <span className="whitespace-nowrap pr-16">{text}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Equalizer ─────────────────────────────────────────── */
 
 function Equalizer({ playing, color }: { playing: boolean; color: string }) {
-  const bars = 16;
+  const bars = useMemo(() =>
+    Array.from({ length: 32 }, (_, i) => ({
+      min: 2 + Math.random() * 2,
+      max: 8 + Math.random() * 24,
+      speed: 0.3 + Math.random() * 0.5,
+      delay: i * 0.03,
+    })), []
+  );
+
   return (
-    <div className="flex items-end justify-center gap-[2px] h-8">
-      {Array.from({ length: bars }).map((_, i) => (
+    <div className="flex items-end justify-center gap-[1.5px] h-8 w-full">
+      {bars.map((bar, i) => (
         <div
           key={i}
-          className="eq-bar"
+          className="eq-bar flex-1"
           style={{
-            "--eq-height": `${8 + Math.random() * 20}px`,
-            animationDelay: `${i * 0.05}s`,
-            animationDuration: `${0.4 + Math.random() * 0.6}s`,
+            ["--eq-min" as string]: `${bar.min}px`,
+            ["--eq-max" as string]: `${bar.max}px`,
+            ["--eq-speed" as string]: `${bar.speed}s`,
+            animationDelay: `${bar.delay}s`,
             animationPlayState: playing ? "running" : "paused",
-            background: color,
-            boxShadow: `0 0 4px ${color}`,
-            height: playing ? undefined : "4px",
+            background: `linear-gradient(to top, ${color}, ${color}88)`,
+            height: playing ? undefined : `${bar.min}px`,
+            transition: "height 0.3s",
           } as React.CSSProperties}
         />
       ))}
@@ -96,74 +150,17 @@ function Equalizer({ playing, color }: { playing: boolean; color: string }) {
   );
 }
 
-/* ─── Channel Display ───────────────────────────────────── */
-
-function ChannelDisplay({ station, nowPlaying }: { station: Station; nowPlaying: string }) {
-  return (
-    <div className="space-y-3">
-      {/* Station name */}
-      <div className="text-center">
-        <div
-          className="text-4xl md:text-5xl font-bold tracking-wider"
-          style={{
-            fontFamily: "'Press Start 2P', monospace",
-            fontSize: "clamp(14px, 3vw, 28px)",
-            color: station.color,
-            textShadow: `0 0 10px ${station.color}, 0 0 20px ${station.color}, 0 0 40px ${station.color}40`,
-          }}
-        >
-          {station.name}
-        </div>
-      </div>
-
-      {/* Frequency & Dimension */}
-      <div className="flex justify-between items-center text-sm md:text-base opacity-80" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-        <span className="glow-green">{station.freq}</span>
-        <span className="glow-amber">DIM: {station.dimension}</span>
-      </div>
-
-      {/* Genre */}
-      <div className="text-center text-xs tracking-[0.3em] opacity-50" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-        {station.genre}
-      </div>
-
-      {/* Tagline */}
-      <div className="text-center text-sm italic opacity-40" style={{ fontFamily: "'VT323', monospace" }}>
-        &quot;{station.tagline}&quot;
-      </div>
-
-      {/* Now Playing */}
-      {nowPlaying && (
-        <div className="mt-4 pt-3 border-t border-green-900/50">
-          <div className="text-xs opacity-40 mb-1" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-            NOW PLAYING
-          </div>
-          <div
-            className="text-lg truncate glow-green"
-            style={{ fontFamily: "'VT323', monospace" }}
-          >
-            {nowPlaying}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Main Page Component ───────────────────────────────── */
+/* ─── Main Page ─────────────────────────────────────────── */
 
 export default function RadioPage() {
   const [stationIdx, setStationIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [poweredOn, setPoweredOn] = useState(false);
-  const [warmingUp, setWarmingUp] = useState(false);
   const [nowPlaying, setNowPlaying] = useState("");
-  const [channelChanging, setChannelChanging] = useState(false);
   const [listeners, setListeners] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const station = STATIONS[stationIdx];
 
-  // Helper: start playing a specific station's stream
   const startStream = useCallback((st: Station) => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -176,26 +173,7 @@ export default function RadioPage() {
     audioRef.current = audio;
   }, []);
 
-  // Power on with warm-up effect
-  const togglePower = useCallback(() => {
-    if (!poweredOn) {
-      setPoweredOn(true);
-      setWarmingUp(true);
-      setTimeout(() => setWarmingUp(false), 2000);
-    } else {
-      setPoweredOn(false);
-      setPlaying(false);
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-        audioRef.current = null;
-      }
-    }
-  }, [poweredOn]);
-
-  // Play/pause
   const togglePlay = useCallback(() => {
-    if (!poweredOn) return;
     if (playing) {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -207,198 +185,221 @@ export default function RadioPage() {
       startStream(station);
       setPlaying(true);
     }
-  }, [poweredOn, playing, station, startStream]);
+  }, [playing, station, startStream]);
 
-  // Channel change — swap stream if currently playing
-  const changeChannel = useCallback(
-    (dir: number) => {
-      if (!poweredOn) return;
-      setChannelChanging(true);
-      setTimeout(() => setChannelChanging(false), 600);
-      const newIdx = (stationIdx + dir + STATIONS.length) % STATIONS.length;
-      setStationIdx(newIdx);
-      if (playing) {
-        startStream(STATIONS[newIdx]);
-      }
-    },
-    [poweredOn, stationIdx, playing, startStream]
-  );
+  const selectStation = useCallback((idx: number) => {
+    if (idx === stationIdx) return;
+    setStationIdx(idx);
+    setNowPlaying("");
+    if (playing) {
+      startStream(STATIONS[idx]);
+    }
+  }, [stationIdx, playing, startStream]);
 
   // Keyboard controls
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowUp" || e.key === "ArrowRight") changeChannel(1);
-      else if (e.key === "ArrowDown" || e.key === "ArrowLeft") changeChannel(-1);
-      else if (e.key === " ") { e.preventDefault(); togglePlay(); }
-      else if (e.key === "p" || e.key === "P") togglePower();
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        selectStation((stationIdx + 1) % STATIONS.length);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        selectStation((stationIdx - 1 + STATIONS.length) % STATIONS.length);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        togglePlay();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [changeChannel, togglePlay, togglePower]);
+  }, [selectStation, stationIdx, togglePlay]);
 
-  // Poll Icecast status for current station's mount
+  // Poll Icecast metadata
   useEffect(() => {
-    if (!poweredOn) return;
     const poll = async () => {
       try {
         const res = await fetch(STATUS_URL, { cache: "no-store" });
         const data = await res.json();
         const sources = data?.icestats?.source;
         if (!sources) return;
-        // sources can be a single object or an array
         const sourceList = Array.isArray(sources) ? sources : [sources];
-        // Find the source matching current station's mount
-        const currentMount = station.mount;
         const src = sourceList.find(
-          (s: Record<string, unknown>) => (s.listenurl as string)?.endsWith(currentMount)
+          (s: Record<string, unknown>) => (s.listenurl as string)?.endsWith(station.mount)
         );
         if (src) {
-          setNowPlaying(
-            (src.title as string) || (src.server_name as string) || "Unknown Signal"
+          const title = (src.title as string) || "";
+          const artist = (src.artist as string) || "";
+          if (artist && title) {
+            setNowPlaying(`${artist} — ${title}`);
+          } else if (title) {
+            setNowPlaying(title);
+          } else {
+            setNowPlaying("");
+          }
+          setListeners(
+            sourceList.reduce((sum: number, s: Record<string, unknown>) =>
+              sum + ((s.listeners as number) || 0), 0
+            )
           );
-          setListeners((src.listeners as number) || 0);
-        } else {
-          setNowPlaying("Tuning...");
-          // Sum all listeners across stations
-          const total = sourceList.reduce(
-            (sum: number, s: Record<string, unknown>) => sum + ((s.listeners as number) || 0),
-            0
-          );
-          setListeners(total);
         }
-      } catch {
-        // Icecast unreachable
-      }
+      } catch { /* noop */ }
     };
     poll();
-    const interval = setInterval(poll, 10000);
+    const interval = setInterval(poll, 8000);
     return () => clearInterval(interval);
-  }, [poweredOn, station]);
+  }, [station]);
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center p-4 md:p-8" style={{ background: "radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 70%)" }}>
-      {/* TV Unit */}
-      <div className="tv-bezel w-full max-w-2xl">
-        {/* Screen */}
-        <div className={`crt-screen aspect-video relative ${warmingUp ? "warming-up" : ""}`}>
-          {/* Static overlay */}
-          <div className="static-overlay" />
-          {/* VHS tracking line */}
-          <div className="vhs-tracking" />
-          {/* Channel change static burst */}
-          {channelChanging && (
-            <div
-              className="absolute inset-0 z-20 channel-static"
-              style={{
-                background: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px)`,
-              }}
-            />
-          )}
+    <div className="h-full w-full flex flex-col relative overflow-hidden safe-top safe-bottom">
+      {/* Ambient glow backdrop */}
+      <div
+        className="glow-backdrop absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
+        style={{ background: `radial-gradient(circle, ${station.color}30, transparent 70%)` }}
+      />
 
-          {/* Screen content */}
-          <div className="relative z-5 h-full flex flex-col justify-between p-6 md:p-8">
-            {!poweredOn ? (
-              /* Off state */
-              <div className="h-full flex items-center justify-center cursor-pointer" onClick={togglePower}>
-                <div className="text-center opacity-30 hover:opacity-50 transition-opacity">
-                  <div className="text-4xl mb-4">📡</div>
-                  <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: "10px" }}>
-                    TAP TO POWER ON
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Top bar */}
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${playing ? "pulse-live" : ""}`} style={{ background: playing ? "#ff3131" : "#333" }} />
-                    <span className="text-xs opacity-60" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-                      {playing ? "LIVE" : "STANDBY"}
-                    </span>
-                  </div>
-                  <div className="text-xs opacity-40" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-                    CH {stationIdx + 1}/{STATIONS.length}
-                  </div>
-                </div>
-
-                {/* Main display */}
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="w-full max-w-md">
-                    <ChannelDisplay station={station} nowPlaying={playing ? nowPlaying : ""} />
-                  </div>
-                </div>
-
-                {/* Equalizer + info bar */}
-                <div className="flex justify-between items-end">
-                  <Equalizer playing={playing} color={station.color} />
-                  <div className="text-xs opacity-30 text-right" style={{ fontFamily: "'Share Tech Mono', monospace" }}>
-                    <div>👂 {listeners}</div>
-                    <div>192kbps MP3</div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Control panel below screen */}
-        <div className="flex items-center justify-between mt-4 px-4">
-          {/* Left: brand */}
-          <div className="flex items-center gap-3">
-            <div
-              className={`power-btn ${poweredOn ? "on" : "off"}`}
-              onClick={togglePower}
-              title="Power (P)"
-            />
-            <div className="text-xs text-amber-800/60" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: "7px" }}>
-              INTERDIMENSIONAL<br />CABLE CO.
-            </div>
-          </div>
-
-          {/* Center: play button */}
-          <button
-            onClick={togglePlay}
-            disabled={!poweredOn}
-            className="px-6 py-2 rounded-md text-sm tracking-wider transition-all disabled:opacity-20"
-            style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              background: playing ? "rgba(255,49,49,0.2)" : "rgba(57,255,20,0.15)",
-              border: `1px solid ${playing ? "#ff3131" : "#39ff14"}44`,
-              color: playing ? "#ff3131" : "#39ff14",
-            }}
+      {/* ─── Header ─────────────────────────── */}
+      <header className="relative z-10 px-5 pt-4 pb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="text-lg">📡</span>
+          <span
+            className="text-xs font-medium tracking-widest uppercase"
+            style={{ fontFamily: "'JetBrains Mono', monospace", color: "#666" }}
           >
-            {playing ? "■ STOP" : "▶ TUNE IN"}
-          </button>
+            ICR
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {listeners > 0 && (
+            <span className="text-xs" style={{ color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>
+              {listeners} listening
+            </span>
+          )}
+          {playing && (
+            <div className="relative flex items-center justify-center w-5 h-5">
+              <div className="w-2 h-2 rounded-full" style={{ background: station.color }} />
+              <div className="pulse-ring absolute inset-0" style={{ color: station.color }} />
+            </div>
+          )}
+        </div>
+      </header>
 
-          {/* Right: channel buttons */}
-          <div className="flex items-center gap-2">
-            <button
-              className="channel-btn"
-              onClick={() => changeChannel(-1)}
-              disabled={!poweredOn}
-              title="Channel Down (←)"
-            >
-              ◀
-            </button>
-            <button
-              className="channel-btn"
-              onClick={() => changeChannel(1)}
-              disabled={!poweredOn}
-              title="Channel Up (→)"
-            >
-              ▶
-            </button>
+      {/* ─── Main Content ───────────────────── */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 gap-6">
+
+        {/* Station info */}
+        <div className="text-center max-w-lg w-full fade-enter" key={station.id}>
+          {/* Genre pill */}
+          <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 rounded-full"
+            style={{ background: `${station.color}15`, border: `1px solid ${station.color}30` }}>
+            <span className="text-[11px] font-medium tracking-wider uppercase"
+              style={{ color: station.color, fontFamily: "'JetBrains Mono', monospace" }}>
+              {station.genre}
+            </span>
+          </div>
+
+          {/* Station name */}
+          <h1
+            className="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-2"
+            style={{ color: "#fff" }}
+          >
+            {station.name}
+          </h1>
+
+          {/* Tagline */}
+          <p className="text-sm md:text-base" style={{ color: "#666" }}>
+            {station.tagline}
+          </p>
+
+          {/* Dimension + Freq */}
+          <div className="mt-3 flex items-center justify-center gap-4 text-xs"
+            style={{ color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>
+            <span>DIM {station.dimension}</span>
+            <span style={{ color: "#333" }}>·</span>
+            <span>{station.freq}</span>
           </div>
         </div>
 
-        {/* Bottom label */}
-        <div className="text-center mt-4">
-          <div className="text-[8px] tracking-[0.5em] opacity-20" style={{ fontFamily: "'Share Tech Mono', monospace", color: "#8b7355" }}>
-            MODEL IRC-2026 · BROADCASTING FROM DIMENSIONS UNKNOWN
-          </div>
+        {/* Play button */}
+        <button
+          onClick={togglePlay}
+          className="play-ring relative w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center"
+          style={{
+            background: playing
+              ? `linear-gradient(135deg, ${station.color}20, ${station.color}05)`
+              : `linear-gradient(135deg, ${station.color}, ${station.color}cc)`,
+            border: `2px solid ${playing ? station.color + '40' : 'transparent'}`,
+            boxShadow: playing ? 'none' : `0 8px 32px ${station.color}40`,
+          }}
+          aria-label={playing ? "Stop" : "Play"}
+        >
+          {playing ? (
+            /* Stop icon */
+            <div className="w-6 h-6 md:w-7 md:h-7 rounded-sm"
+              style={{ background: station.color }} />
+          ) : (
+            /* Play icon */
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" className="ml-1">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
+
+        {/* Now playing */}
+        <div className="w-full max-w-md text-center min-h-[48px] flex flex-col items-center justify-center">
+          {playing && nowPlaying ? (
+            <div className="w-full">
+              <div className="text-[10px] uppercase tracking-widest mb-1.5"
+                style={{ color: "#555", fontFamily: "'JetBrains Mono', monospace" }}>
+                Now Playing
+              </div>
+              <Marquee
+                text={nowPlaying}
+                className="text-base md:text-lg font-medium"
+              />
+            </div>
+          ) : playing ? (
+            <span className="text-sm" style={{ color: "#555" }}>Tuning in...</span>
+          ) : null}
         </div>
-      </div>
+
+        {/* Equalizer */}
+        <div className="w-full max-w-sm px-4">
+          <Equalizer playing={playing} color={station.color} />
+        </div>
+      </main>
+
+      {/* ─── Station Selector ───────────────── */}
+      <nav className="relative z-10 px-3 pb-4 pt-2">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {STATIONS.map((st, idx) => {
+            const active = idx === stationIdx;
+            return (
+              <button
+                key={st.id}
+                onClick={() => selectStation(idx)}
+                className="station-card flex-shrink-0 flex flex-col items-start gap-1.5 rounded-xl px-4 py-3 min-w-[120px]"
+                style={{
+                  background: active ? `${st.color}15` : '#141414',
+                  border: `1px solid ${active ? st.color + '40' : '#1e1e1e'}`,
+                }}
+              >
+                <span
+                  className="text-[10px] font-semibold tracking-wider"
+                  style={{
+                    color: active ? st.color : '#555',
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  {st.shortName}
+                </span>
+                <span className="text-[11px]" style={{ color: active ? '#999' : '#444' }}>
+                  {st.genre}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
