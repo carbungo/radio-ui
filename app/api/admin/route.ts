@@ -140,8 +140,18 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case "skip": {
-        const result = await telnet(`out_${station}.skip`);
-        return NextResponse.json({ ok: true, result });
+        // Skip at playlist source level, not output level.
+        // out_X.skip confuses the crossfade buffer (causes buzzing/silence).
+        // Playlist skip properly advances the track and lets crossfade blend naturally.
+        const s2 = STATIONS.find((s) => s.id === station);
+        if (s2?.playlist) {
+          const result = await telnet(`${s2.playlist}.skip`);
+          return NextResponse.json({ ok: true, result });
+        } else {
+          // Fallback for stream/surfing (no dedicated playlist)
+          const result = await telnet(`out_${station}.skip`);
+          return NextResponse.json({ ok: true, result });
+        }
       }
       case "reload": {
         const s = STATIONS.find((s) => s.id === station);
