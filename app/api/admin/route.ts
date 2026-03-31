@@ -23,10 +23,13 @@ function telnet(command: string): Promise<string> {
     sock.on("data", (chunk) => (data += chunk.toString()));
     sock.on("end", () => {
       clearTimeout(timeout);
-      // Strip the "END" markers and "Bye!" from liquidsoap responses
+      // Strip telnet protocol noise from liquidsoap responses
       const cleaned = data
         .split("\n")
-        .filter((l) => l !== "END" && l !== "Bye!" && l.trim() !== "")
+        .filter((l) => {
+          const t = l.trim();
+          return t !== "" && t !== "END" && t !== "Bye!" && !t.startsWith("Bye");
+        })
         .join("\n")
         .trim();
       resolve(cleaned);
